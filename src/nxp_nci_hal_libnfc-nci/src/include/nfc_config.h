@@ -36,9 +36,10 @@
 
 #include <string>
 #include <vector>
+#include <cstdint>
 
 #include "config.h"
-#include<map>
+#include <map>
 
 /* Configs from libnfc-nci.conf */
 #define NAME_NFC_DEBUG_ENABLED "NFC_DEBUG_ENABLED"
@@ -76,27 +77,28 @@
 #define NAME_ISO_DEP_MAX_TRANSCEIVE "ISO_DEP_MAX_TRANSCEIVE"
 #define NAME_DEVICE_HOST_WHITE_LIST "DEVICE_HOST_WHITE_LIST"
 #define NAME_DEFAULT_ISODEP_ROUTE "DEFAULT_ISODEP_ROUTE"
-#if(NXP_EXTNS == TRUE)
+#if (NXP_EXTNS == TRUE)
 #define NAME_NXP_AGC_DEBUG_ENABLE "NXP_AGC_DEBUG_ENABLE"
 #define NAME_NXP_T4T_NFCEE_ENABLE "NXP_T4T_NFCEE_ENABLE"
 #define NAME_NXP_T4T_NDEF_NFCEE_AID "NXP_T4T_NDEF_NFCEE_AID"
 #define NAME_DEFAULT_T4TNFCEE_AID_POWER_STATE "DEFAULT_T4TNFCEE_AID_POWER_STATE"
 #endif
 
-class NfcConfig {
- public:
-  static bool hasKey(const std::string& key);
-  static std::string getString(const std::string& key);
-  static std::string getString(const std::string& key,
+class NfcConfig
+{
+public:
+  static bool hasKey(const std::string &key);
+  static std::string getString(const std::string &key);
+  static std::string getString(const std::string &key,
                                std::string default_value);
-  static unsigned getUnsigned(const std::string& key);
-  static unsigned getUnsigned(const std::string& key, unsigned default_value);
-  static std::vector<uint8_t> getBytes(const std::string& key);
+  static unsigned getUnsigned(const std::string &key);
+  static unsigned getUnsigned(const std::string &key, unsigned default_value);
+  static std::vector<uint8_t> getBytes(const std::string &key);
   static void clear();
 
- private:
+private:
   void loadConfig();
-  static NfcConfig& getInstance();
+  static NfcConfig &getInstance();
   NfcConfig();
 
   ConfigFile config_;
