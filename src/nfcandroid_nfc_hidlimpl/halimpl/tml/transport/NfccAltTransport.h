@@ -18,108 +18,89 @@
 
 #pragma once
 #include <NfccTransport.h>
+#include <gpiod.h>
 #include <linux/i2c-dev.h>
 #include <linux/i2c.h>
 #include <poll.h>
 
+/* ── I2C / SPI bus configuration ─────────────────────────────────────────── */
 #define I2C_ADDRESS 0x28
 #define I2C_BUS "/dev/i2c-1"
 #define SPI_BUS "/dev/spidev0.0"
-#define PIN_INT 23
-#define PIN_ENABLE 24
-#define PIN_FWDNLD 25
+
+/*
+ * GPIO chip device.
+ * On Raspberry Pi 1-4 all BCM GPIOs live on gpiochip0.
+ * RPi 5 moved the main bank to gpiochip4 – override at build time if needed:
+ *   -DGPIO_CHIP_PATH=\"/dev/gpiochip4\"
+ */
+#ifndef GPIO_CHIP_PATH
+#define GPIO_CHIP_PATH "/dev/gpiochip0"
+#endif
+
+/* ── BCM GPIO pin numbers (= offsets on gpiochip0) ───────────────────────── */
+#define PIN_INT 23    /* IRQ  – input, rising-edge */
+#define PIN_ENABLE 24 /* VEN  – output             */
+#define PIN_FWDNLD 25 /* FWDL – output             */
+
+/* Edge constants kept for source-level compatibility with any call sites */
 #define EDGE_NONE 0
 #define EDGE_RISING 1
 #define EDGE_FALLING 2
 #define EDGE_BOTH 3
+
+/* ── Protocol framing constants ──────────────────────────────────────────── */
 #define CRC_LEN 2
 #define NORMAL_MODE_HEADER_LEN 3
 #define FW_DNLD_HEADER_LEN 2
 #define FW_DNLD_LEN_OFFSET 1
 #define NORMAL_MODE_LEN_OFFSET 2
 #define FRAGMENTSIZE_MAX PHNFC_I2C_FRAGMENT_SIZE
+
 extern phTmlNfc_i2cfragmentation_t fragmentation_enabled;
 
-class NfccAltTransport : public NfccTransport {
- public:
+/* ══════════════════════════════════════════════════════════════════════════ */
+
+class NfccAltTransport : public NfccTransport
+{
+public:
   NfccAltTransport();
+  ~NfccAltTransport();
+
   bool_t bFwDnldFlag = false;
   sem_t mTxRxSemaphore;
-  int iEnableFd;
-  int iInterruptFd;
-  int iFwDnldFd;
 
- public:
+private:
+  /* ── libgpiod v2 handles ───────────────────────────────────────────────── */
+  struct gpiod_chip *mpGpioChip;
+
+  /*
+   * Two separate requests:
+   *   mpIntRequest – PIN_INT only (input + rising-edge detection)
+   *   mpOutRequest – PIN_ENABLE + PIN_FWDNLD (outputs, combined so both values
+   *                  can be driven atomically if ever required)
+   */
+  struct gpiod_line_request *mpIntRequest;
+  struct gpiod_line_request *mpOutRequest;
+
+  void ReleaseGpio(); /* tear-down helper */
+
+public:
+  /* ── GPIO output helpers ──────────────────────────────────────────────── */
   void gpio_set_ven(int value);
   void gpio_set_fwdl(int value);
-  int verifyPin(int pin, int isoutput, int edge);
   void wait4interrupt(void);
+
+  /* ── Semaphore helpers ───────────────────────────────────────────────── */
   int SemTimedWait();
   void SemPost();
-  int Flushdata(void* pDevHandle, uint8_t* pBuffer, int numRead);
-  /*****************************************************************************
-   **
-   ** Function         Reset
-   **
-   ** Description      Reset NFCC device, using VEN pin
-   **
-   ** Parameters       pDevHandle     - valid device handle
-   **                  level          - reset level
-   **
-   ** Returns           0   - reset operation success
-   **                  -1   - reset operation failure
-   **
-   ****************************************************************************/
-  int NfccReset(void* pDevHandle, NfccResetType eType);
 
-  /*****************************************************************************
-   **
-   ** Function         EnableFwDnldMode
-   **
-   ** Description      updates the state to Download mode
-   **
-   ** Parameters       True/False
-   **
-   ** Returns          None
-   ****************************************************************************/
+  /* ── NfccTransport overrides ─────────────────────────────────────────── */
+  int Flushdata(void *pDevHandle, uint8_t *pBuffer, int numRead);
+  int NfccReset(void *pDevHandle, NfccResetType eType);
   void EnableFwDnldMode(bool mode);
-
-  /*****************************************************************************
-   **
-   ** Function         IsFwDnldModeEnabled
-   **
-   ** Description      Returns the current mode
-   **
-   ** Parameters       none
-   **
-   ** Returns           Current mode download/NCI
-   ****************************************************************************/
   bool_t IsFwDnldModeEnabled(void);
-
-  /*******************************************************************************
-   **
-   ** Function         GetIrqState
-   **
-   ** Description      Get state of IRQ GPIO
-   **
-   ** Parameters       pDevHandle - valid device handle
-   **
-   ** Returns          The state of IRQ line i.e. +ve if read is pending else
-   *Zer0.
-   **                  In the case of IOCTL error, it returns -ve value.
-   **
-   *******************************************************************************/
-  int GetIrqState(void* pDevHandle);
-  int GetNfcState(void* pDevHandle);
-  /*****************************************************************************
-   **
-   ** Function         ConfigurePin
-   **
-   ** Description      Configure Pins such as IRQ, VEN, Firmware Download
-   **
-   ** Parameters       none
-   **
-   ** Returns           NFCSTATUS_SUCCESS - on Success/ -1 on Failure
-   ****************************************************************************/
+  int GetIrqState(void *pDevHandle);
+  int GetNfcState(void *pDevHandle);
   int ConfigurePin();
 };
