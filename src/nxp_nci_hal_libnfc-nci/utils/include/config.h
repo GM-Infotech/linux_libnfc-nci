@@ -18,10 +18,17 @@
 #include <map>
 #include <string>
 #include <vector>
+#include <cstdint>
 
-class ConfigValue {
- public:
-  enum Type { UNSIGNED, STRING, BYTES };
+class ConfigValue
+{
+public:
+  enum Type
+  {
+    UNSIGNED,
+    STRING,
+    BYTES
+  };
 
   ConfigValue();
   explicit ConfigValue(std::string);
@@ -34,29 +41,30 @@ class ConfigValue {
 
   bool parseFromString(std::string in);
 
- private:
+private:
   Type type_;
   std::string value_string_;
   unsigned value_unsigned_;
   std::vector<uint8_t> value_bytes_;
 };
 
-class ConfigFile {
- public:
-  void parseFromFile(const std::string& file_name);
-  void parseFromString(const std::string& config);
-  void addConfig(const std::string& config, ConfigValue& value);
+class ConfigFile
+{
+public:
+  void parseFromFile(const std::string &file_name);
+  void parseFromString(const std::string &config);
+  void addConfig(const std::string &config, ConfigValue &value);
 
-  bool hasKey(const std::string& key);
-  std::string getString(const std::string& key);
-  unsigned getUnsigned(const std::string& key);
-  std::vector<uint8_t> getBytes(const std::string& key);
+  bool hasKey(const std::string &key);
+  std::string getString(const std::string &key);
+  unsigned getUnsigned(const std::string &key);
+  std::vector<uint8_t> getBytes(const std::string &key);
 
   bool isEmpty();
   void clear();
 
- private:
-  ConfigValue& getValue(const std::string& key);
+private:
+  ConfigValue &getValue(const std::string &key);
 
   std::map<std::string, ConfigValue> values_;
 };
