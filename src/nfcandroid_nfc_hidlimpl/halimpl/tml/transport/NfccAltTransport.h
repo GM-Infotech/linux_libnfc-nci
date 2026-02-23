@@ -83,9 +83,15 @@ private:
   struct gpiod_line_request *mpIntRequest;
   struct gpiod_line_request *mpOutRequest;
 
-  void ReleaseGpio(); /* tear-down helper */
-
 public:
+  /*
+   * Release all libgpiod resources.
+   * Must be called from subclass Close() implementations instead of
+   * close(iEnableFd) / close(iInterruptFd) / close(iFwDnldFd).
+   * Also called automatically by ~NfccAltTransport().
+   */
+  void ReleaseGpio();
+
   /* ── GPIO output helpers ──────────────────────────────────────────────── */
   void gpio_set_ven(int value);
   void gpio_set_fwdl(int value);
