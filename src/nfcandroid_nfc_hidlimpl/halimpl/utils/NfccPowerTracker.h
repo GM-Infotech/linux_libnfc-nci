@@ -20,11 +20,13 @@
 #include <string>
 #include <time.h>
 #include <vector>
+#include <cstdint>
 
 /*Time spent in Active mode per count provided by NFCC*/
 static const uint32_t ACTIVE_TIME_PER_TIMER_COUNT_IN_MILLISEC = 20;
 /*Types of  Power states supported by NFCC */
-typedef struct NfccPowerStateInfo {
+typedef struct NfccPowerStateInfo
+{
   /* state name: Active/Standby */
   std::string name;
   /* Time spent in msec at this  power state since boot */
@@ -34,7 +36,8 @@ typedef struct NfccPowerStateInfo {
 } NfccPowerStateInfo_t;
 
 /*Class to track the time spent in Standby mode by NFCC*/
-class NfccPowerTracker {
+class NfccPowerTracker
+{
 public:
   static NfccPowerTracker &getInstance();
 

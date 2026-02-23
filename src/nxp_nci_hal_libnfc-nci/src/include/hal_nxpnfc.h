@@ -15,17 +15,19 @@
  *  limitations under the License.
  *
  ******************************************************************************/
-#if(NXP_EXTNS == TRUE)
+#if (NXP_EXTNS == TRUE)
 #ifndef ANDROID_HARDWARE_HAL_NXPNFC_V1_0_H
 #define ANDROID_HARDWARE_HAL_NXPNFC_V1_0_H
 #include <vector>
 #include <string>
+#include <cstdint>
 
 #define MAX_IOCTL_TRANSCEIVE_CMD_LEN 256
 #define MAX_IOCTL_TRANSCEIVE_RESP_LEN 256
 #define MAX_ATR_INFO_LEN 128
 
-enum {
+enum
+{
   HAL_NFC_GET_NXP_CONFIG = 30,
 };
 
@@ -36,7 +38,8 @@ enum {
  * nfc_nci_ExtnCmd_t shall contain data for commands used for transceive command
  * in ioctl
  */
-typedef struct {
+typedef struct
+{
   uint16_t cmd_len;
   uint8_t p_cmd[MAX_IOCTL_TRANSCEIVE_CMD_LEN];
 } nfc_nci_ExtnCmd_t;
@@ -45,7 +48,8 @@ typedef struct {
  * nxp_nfc_scrResetEmvcoCmd_t shall contain core set conf command to reset EMVCO
  * mode and the length of the command
  */
-typedef struct {
+typedef struct
+{
   long len;
   uint8_t cmd[10];
 } nxp_nfc_scrResetEmvcoCmd_t;
@@ -54,7 +58,8 @@ typedef struct {
  * nfc_nci_ExtnRsp_t shall contain response for command sent in transceive
  * command
  */
-typedef struct {
+typedef struct
+{
   uint8_t wAgcDebugEnable;
   uint8_t wT4TNdefEnable;
   uint8_t wT4TPowerState;
@@ -63,7 +68,8 @@ typedef struct {
  * nfc_nci_ExtnRsp_t shall contain response for command sent in transceive
  * command
  */
-typedef struct {
+typedef struct
+{
   uint16_t rsp_len;
   uint8_t p_rsp[MAX_IOCTL_TRANSCEIVE_RESP_LEN];
 } nfc_nci_ExtnRsp_t;
@@ -71,7 +77,8 @@ typedef struct {
  * TransitConfig_t shall contain transit config value and transit
  * Configuration length
  */
-typedef struct {
+typedef struct
+{
   long len;
   char *val;
 } TransitConfig_t;
@@ -79,7 +86,8 @@ typedef struct {
  * InputData_t :ioctl has multiple subcommands
  * Each command has corresponding input data which needs to be populated in this
  */
-typedef union {
+typedef union
+{
   uint16_t bootMode;
   uint8_t halType;
   nfc_nci_ExtnCmd_t nciCmd;
@@ -95,11 +103,12 @@ typedef union {
  * data
  * is exposed to libnfc (Not encapsulated).
  */
-typedef struct {
+typedef struct
+{
   /*context to be used/updated only by users of proxy & stub of Nfc.hal
-  * i.e, NfcAdaptation & hardware/interface/Nfc.
-  */
-  void* context;
+   * i.e, NfcAdaptation & hardware/interface/Nfc.
+   */
+  void *context;
   InputData_t data;
   uint8_t data_source;
   long level;
@@ -109,7 +118,8 @@ typedef struct {
  * outputData_t :ioctl has multiple commands/responses
  * This contains the output types for each ioctl.
  */
-typedef union {
+typedef union
+{
   uint32_t status;
   nfc_nci_ExtnRsp_t nciRsp;
   uint8_t nxpNciAtrInfo[MAX_ATR_INFO_LEN];
@@ -131,14 +141,15 @@ typedef union {
  * and Nfcstub to ncihal, common structure is used. As a sideeffect, these data
  * is exposed(Not encapsulated).
  */
-typedef struct {
+typedef struct
+{
   /*ioctlType, result & context to be used/updated only by users of
    * proxy & stub of Nfc.hal.
    * i.e, NfcAdaptation & hardware/interface/Nfc
    * These fields shall not be used by libnfc or halimplementation*/
   uint64_t ioctlType;
   uint32_t result;
-  void* context;
+  void *context;
   outputData_t data;
 } nfc_nci_ExtnOutputData_t;
 
@@ -147,17 +158,19 @@ typedef struct {
  * to be sent for ioctl command. input is populated by client/proxy side
  * output is provided from server/stub to client/proxy
  */
-typedef struct {
+typedef struct
+{
   nfc_nci_ExtnInputData_t inp;
   nfc_nci_ExtnOutputData_t out;
 } nfc_nci_IoctlInOutData_t;
 
-enum NxpNfcHalStatus {
-    /** In case of an error, HCI network needs to be re-initialized */
-    HAL_NFC_STATUS_RESTART = 0x30,
-    HAL_NFC_HCI_NV_RESET = 0x40,
-    HAL_NFC_CONFIG_ESE_LINK_COMPLETE = 0x50
+enum NxpNfcHalStatus
+{
+  /** In case of an error, HCI network needs to be re-initialized */
+  HAL_NFC_STATUS_RESTART = 0x30,
+  HAL_NFC_HCI_NV_RESET = 0x40,
+  HAL_NFC_CONFIG_ESE_LINK_COMPLETE = 0x50
 };
 
-#endif  // ANDROID_HARDWARE_HAL_NXPNFC_V1_0_H
-#endif  // NXP_EXTNS
+#endif // ANDROID_HARDWARE_HAL_NXPNFC_V1_0_H
+#endif // NXP_EXTNS
