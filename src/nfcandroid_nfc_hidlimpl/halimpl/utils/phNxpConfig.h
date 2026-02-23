@@ -176,7 +176,6 @@ extern "C"
 #define NAME_NXP_AGC_DEBUG_ENABLE "NXP_AGC_DEBUG_ENABLE"
 #define NAME_NXP_T4T_NFCEE_ENABLE "NXP_T4T_NFCEE_ENABLE"
 #define NAME_DEFAULT_T4TNFCEE_AID_POWER_STATE "DEFAULT_T4TNFCEE_AID_POWER_STATE"
-#endif
 
 /* GPIO configuration for the alt (userspace) transport.
  * All three pin values are BCM GPIO numbers (offsets on the gpiochip).
