@@ -11,6 +11,9 @@ pkgconfiglibdir = $(libdir)/pkgconfig
 pkgconfiglib_DATA = \
 	libnfc-nci.pc
 
+AM_CFLAGS = -Wno-error -Wno-implicit-function-declaration
+AM_CXXFLAGS = -Wno-error -std=c++11
+
 AM_CPPFLAGS = \
 	-DCONFIG_PATH='"$(configdir)/"' \
 	-I$(srcdir)/src/include \
