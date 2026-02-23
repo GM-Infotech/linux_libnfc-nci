@@ -21,6 +21,7 @@
 #include <gpiod.h>
 #include <linux/i2c-dev.h>
 #include <linux/i2c.h>
+#include <phNxpConfig.h>
 #include <poll.h>
 
 /* ── I2C / SPI bus configuration ─────────────────────────────────────────── */
@@ -82,6 +83,15 @@ private:
    */
   struct gpiod_line_request *mpIntRequest;
   struct gpiod_line_request *mpOutRequest;
+
+  /*
+   * Pin offsets resolved at runtime from libnfc-nxp.conf (or compiled
+   * defaults).  Stored here so gpio_set_ven/fwdl/GetIrqState don't have
+   * to refer back to the compile-time PIN_* constants.
+   */
+  unsigned int mPinInt = PIN_INT;
+  unsigned int mPinEnable = PIN_ENABLE;
+  unsigned int mPinFwDnld = PIN_FWDNLD;
 
 public:
   /*

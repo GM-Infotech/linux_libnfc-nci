@@ -42,6 +42,7 @@
 #include <NfccAltTransport.h>
 #include <NfccI2cTransport.h>
 #include <phNfcStatus.h>
+#include <phNxpConfig.h>
 #include <phNxpLog.h>
 #include "phNxpNciHal_utils.h"
 
@@ -87,10 +88,18 @@ void NfccAltTransport::ReleaseGpio()
 **
 ** Function         ConfigurePin
 **
-** Description      Open the GPIO chip and request the three NFC control lines:
-**                    PIN_INT    – input, rising-edge event detection
-**                    PIN_ENABLE – output (VEN)
-**                    PIN_FWDNLD – output (firmware-download mode)
+** Description      Open the GPIO chip and request the three NFC control lines.
+**
+**                  Pin numbers and the chip path are read at runtime from
+**                  libnfc-nxp.conf so they can be changed without recompiling:
+**
+**                    NXP_GPIO_CHIP_PATH="/dev/gpiochip0"   # string
+**                    NXP_GPIO_INT=23                       # BCM offset, input
+**                    NXP_GPIO_VEN=24                       # BCM offset, output
+**                    NXP_GPIO_FWDNLD=25                    # BCM offset, output
+**
+**                  Any key that is absent falls back to the compiled-in default
+**                  (GPIO_CHIP_PATH / PIN_INT / PIN_ENABLE / PIN_FWDNLD).
 **
 ** Parameters       none
 **
@@ -100,24 +109,73 @@ void NfccAltTransport::ReleaseGpio()
 *******************************************************************************/
 int NfccAltTransport::ConfigurePin()
 {
-  NXPLOG_TML_D("%s Enter – chip: %s", __func__, GPIO_CHIP_PATH);
+
+  /* ── Resolve chip path ──────────────────────────────────────────────────
+   * GetNxpStrValue writes a null-terminated string and returns non-zero on
+   * success.  PATH_MAX (4096) is overkill for a devnode but safe.           */
+  char chipPath[64] = GPIO_CHIP_PATH; /* pre-filled with compiled default */
+  if (GetNxpStrValue(NAME_NXP_GPIO_CHIP_PATH, chipPath, sizeof(chipPath)) <= 0)
+  {
+    NXPLOG_TML_D("%s NXP_GPIO_CHIP_PATH not in config, using default: %s",
+                 __func__, chipPath);
+  }
+
+  /* ── Resolve pin offsets ────────────────────────────────────────────────
+   * GetNxpNumValue writes into a 'long' when len == sizeof(long).
+   * We read into long then range-check before trusting the value.           */
+  unsigned int pinInt = PIN_INT;
+  unsigned int pinEnable = PIN_ENABLE;
+  unsigned int pinFwDnld = PIN_FWDNLD;
+
+  long cfgVal = 0;
+  if (GetNxpNumValue(NAME_NXP_GPIO_INT, &cfgVal, sizeof(cfgVal)) > 0 &&
+      cfgVal > 0 && cfgVal < 512)
+  {
+    pinInt = (unsigned int)cfgVal;
+  }
+  else
+  {
+    NXPLOG_TML_D("%s NXP_GPIO_INT not in config, using default: %u",
+                 __func__, pinInt);
+  }
+
+  cfgVal = 0;
+  if (GetNxpNumValue(NAME_NXP_GPIO_VEN, &cfgVal, sizeof(cfgVal)) > 0 &&
+      cfgVal > 0 && cfgVal < 512)
+  {
+    pinEnable = (unsigned int)cfgVal;
+  }
+  else
+  {
+    NXPLOG_TML_D("%s NXP_GPIO_VEN not in config, using default: %u",
+                 __func__, pinEnable);
+  }
+
+  cfgVal = 0;
+  if (GetNxpNumValue(NAME_NXP_GPIO_FWDNLD, &cfgVal, sizeof(cfgVal)) > 0 &&
+      cfgVal > 0 && cfgVal < 512)
+  {
+    pinFwDnld = (unsigned int)cfgVal;
+  }
+  else
+  {
+    NXPLOG_TML_D("%s NXP_GPIO_FWDNLD not in config, using default: %u",
+                 __func__, pinFwDnld);
+  }
+
+  NXPLOG_TML_D("%s chip=%s  INT=%u  VEN=%u  FWDL=%u",
+               __func__, chipPath, pinInt, pinEnable, pinFwDnld);
 
   /* ── Open GPIO chip ─────────────────────────────────────────────────── */
-  mpGpioChip = gpiod_chip_open(GPIO_CHIP_PATH);
+  mpGpioChip = gpiod_chip_open(chipPath);
   if (!mpGpioChip)
   {
-    NXPLOG_TML_E("%s gpiod_chip_open(%s) failed: %s", __func__,
-                 GPIO_CHIP_PATH, strerror(errno));
+    NXPLOG_TML_E("%s gpiod_chip_open(%s) failed: %s",
+                 __func__, chipPath, strerror(errno));
     return NFCSTATUS_INVALID_DEVICE;
   }
 
-  /* ────────────────────────────────────────────────────────────────────
-   * Request 1: PIN_INT – input with rising-edge detection.
-   *
-   * We keep this as a separate request from the outputs so that the
-   * file-descriptor returned by gpiod_line_request_get_fd() is dedicated
-   * to edge events and can be poll()'d without interference.
-   * ──────────────────────────────────────────────────────────────────── */
+  /* ── Request 1: interrupt input with rising-edge detection ─────────── */
   {
     struct gpiod_line_settings *settings = gpiod_line_settings_new();
     struct gpiod_line_config *line_cfg = gpiod_line_config_new();
@@ -135,12 +193,9 @@ int NfccAltTransport::ConfigurePin()
 
     gpiod_line_settings_set_direction(settings, GPIOD_LINE_DIRECTION_INPUT);
     gpiod_line_settings_set_edge_detection(settings, GPIOD_LINE_EDGE_RISING);
-    /* Keep a bias-pull-down so the line is not floating while NFCC is off */
     gpiod_line_settings_set_bias(settings, GPIOD_LINE_BIAS_PULL_DOWN);
 
-    unsigned int int_offset = PIN_INT;
-    gpiod_line_config_add_line_settings(line_cfg, &int_offset, 1, settings);
-
+    gpiod_line_config_add_line_settings(line_cfg, &pinInt, 1, settings);
     gpiod_request_config_set_consumer(req_cfg, "nfc-irq");
 
     mpIntRequest = gpiod_chip_request_lines(mpGpioChip, req_cfg, line_cfg);
@@ -151,19 +206,17 @@ int NfccAltTransport::ConfigurePin()
 
     if (!mpIntRequest)
     {
-      NXPLOG_TML_E("%s request for INT pin %d failed: %s", __func__,
-                   PIN_INT, strerror(errno));
+      NXPLOG_TML_E("%s request for INT pin %u failed: %s",
+                   __func__, pinInt, strerror(errno));
       ReleaseGpio();
       return NFCSTATUS_INVALID_DEVICE;
     }
+
+    /* Store for use by GetIrqState() / wait4interrupt() */
+    mPinInt = pinInt;
   }
 
-  /* ────────────────────────────────────────────────────────────────────
-   * Request 2: PIN_ENABLE + PIN_FWDNLD – outputs, both initially LOW.
-   *
-   * Combining them in one request lets us drive them atomically in the
-   * future; for now they are set independently via set_value().
-   * ──────────────────────────────────────────────────────────────────── */
+  /* ── Request 2: VEN + FWDL outputs, both initially LOW ─────────────── */
   {
     struct gpiod_line_settings *settings = gpiod_line_settings_new();
     struct gpiod_line_config *line_cfg = gpiod_line_config_new();
@@ -182,9 +235,8 @@ int NfccAltTransport::ConfigurePin()
     gpiod_line_settings_set_direction(settings, GPIOD_LINE_DIRECTION_OUTPUT);
     gpiod_line_settings_set_output_value(settings, GPIOD_LINE_VALUE_INACTIVE);
 
-    unsigned int out_offsets[] = {PIN_ENABLE, PIN_FWDNLD};
+    unsigned int out_offsets[] = {pinEnable, pinFwDnld};
     gpiod_line_config_add_line_settings(line_cfg, out_offsets, 2, settings);
-
     gpiod_request_config_set_consumer(req_cfg, "nfc-ctrl");
 
     mpOutRequest = gpiod_chip_request_lines(mpGpioChip, req_cfg, line_cfg);
@@ -195,15 +247,18 @@ int NfccAltTransport::ConfigurePin()
 
     if (!mpOutRequest)
     {
-      NXPLOG_TML_E("%s request for output pins (%d,%d) failed: %s", __func__,
-                   PIN_ENABLE, PIN_FWDNLD, strerror(errno));
+      NXPLOG_TML_E("%s request for output pins (%u,%u) failed: %s",
+                   __func__, pinEnable, pinFwDnld, strerror(errno));
       ReleaseGpio();
       return NFCSTATUS_INVALID_DEVICE;
     }
+
+    /* Store for use by gpio_set_ven() / gpio_set_fwdl() */
+    mPinEnable = pinEnable;
+    mPinFwDnld = pinFwDnld;
   }
 
-  NXPLOG_TML_D("%s Success – INT=%d VEN=%d FWDL=%d on %s", __func__,
-               PIN_INT, PIN_ENABLE, PIN_FWDNLD, GPIO_CHIP_PATH);
+  NXPLOG_TML_D("%s Success", __func__);
   return NFCSTATUS_SUCCESS;
 }
 
@@ -217,9 +272,10 @@ void NfccAltTransport::gpio_set_ven(int value)
   enum gpiod_line_value v =
       (value ? GPIOD_LINE_VALUE_ACTIVE : GPIOD_LINE_VALUE_INACTIVE);
 
-  if (gpiod_line_request_set_value(mpOutRequest, PIN_ENABLE, v) < 0)
+  if (gpiod_line_request_set_value(mpOutRequest, mPinEnable, v) < 0)
   {
-    NXPLOG_TML_E("%s set VEN=%d failed: %s", __func__, value, strerror(errno));
+    NXPLOG_TML_E("%s set VEN(pin %u)=%d failed: %s",
+                 __func__, mPinEnable, value, strerror(errno));
   }
   usleep(10 * 1000);
 }
@@ -232,9 +288,10 @@ void NfccAltTransport::gpio_set_fwdl(int value)
   enum gpiod_line_value v =
       (value ? GPIOD_LINE_VALUE_ACTIVE : GPIOD_LINE_VALUE_INACTIVE);
 
-  if (gpiod_line_request_set_value(mpOutRequest, PIN_FWDNLD, v) < 0)
+  if (gpiod_line_request_set_value(mpOutRequest, mPinFwDnld, v) < 0)
   {
-    NXPLOG_TML_E("%s set FWDL=%d failed: %s", __func__, value, strerror(errno));
+    NXPLOG_TML_E("%s set FWDL(pin %u)=%d failed: %s",
+                 __func__, mPinFwDnld, value, strerror(errno));
   }
   usleep(10 * 1000);
 }
@@ -263,7 +320,7 @@ int NfccAltTransport::GetIrqState(void *pDevHandle)
   }
 
   enum gpiod_line_value val =
-      gpiod_line_request_get_value(mpIntRequest, PIN_INT);
+      gpiod_line_request_get_value(mpIntRequest, mPinInt);
 
   if (val == GPIOD_LINE_VALUE_ERROR)
   {
