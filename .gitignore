@@ -66,3 +66,14 @@ Makefile
 # Editor
 *.orig
 *.rej
+
+# VS Code
+# Ignore VS Code workspace files
+*.code-workspace
+
+# Ignore personal VS Code history/state
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/extensions.json
+!.vscode/launch.json
