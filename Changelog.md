@@ -131,7 +131,7 @@ Added four new config key name defines inside the existing
 
 #### `conf/libnfc-nxp.conf`
 
-Added a new GPIO configuration section at the end of the file:
+Added a new GPIO configuration section:
 
 ```properties
 ###############################################################################
@@ -146,7 +146,6 @@ Added a new GPIO configuration section at the end of the file:
 #
 # If any of these keys are absent the compiled-in defaults are used
 # (gpiochip0, INT=23, VEN=24, FWDNLD=25).
-###############################################################################
 NXP_GPIO_CHIP_PATH="/dev/gpiochip0"
 NXP_GPIO_INT=23
 NXP_GPIO_VEN=24
