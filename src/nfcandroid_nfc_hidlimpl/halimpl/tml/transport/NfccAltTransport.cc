@@ -338,78 +338,44 @@ int NfccAltTransport::GetIrqState(void *pDevHandle)
 void NfccAltTransport::wait4interrupt(void)
 {
     if (!mpIntRequest)
-    {
-        NXPLOG_TML_E("%s INT request not initialised", __func__);
         return;
-    }
 
     int irq_fd = gpiod_line_request_get_fd(mpIntRequest);
     if (irq_fd < 0)
-    {
-        NXPLOG_TML_E("%s gpiod_line_request_get_fd failed: %s", __func__, strerror(errno));
         return;
-    }
 
     struct pollfd fds = {.fd = irq_fd, .events = POLLIN};
 
-    /*
-     * ALWAYS drain accumulated edge events from the kernel buffer before
-     * doing anything else.  The fast path (GetIrqState > 0 → return) used
-     * to skip this, which allowed the kernel's bounded event FIFO to fill
-     * up.  Once full, new rising-edge events are silently dropped.  If a
-     * drop then coincides with the IRQ being low at the start of a
-     * poll() call, poll() blocks forever because the event it would need
-     * to wake on was never queued.
-     */
-    while (true)
+    // Drain ALL stale buffered events unconditionally before we start.
+    // Allocate once outside the loop.
+    struct gpiod_edge_event_buffer *evbuf = gpiod_edge_event_buffer_new(16);
+    if (evbuf)
     {
-        int ret = poll(&fds, 1, 0); /* non-blocking probe */
-        if (ret <= 0 || !(fds.revents & POLLIN))
-            break;
-
-        struct gpiod_edge_event_buffer *evbuf = gpiod_edge_event_buffer_new(16);
-        if (evbuf)
-        {
+        while (poll(&fds, 1, 0) > 0 && (fds.revents & POLLIN))
             gpiod_line_request_read_edge_events(mpIntRequest, evbuf, 16);
-            gpiod_edge_event_buffer_free(evbuf);
-        }
-        else
-            break; /* allocation failure – stop draining, don't spin */
     }
 
-    /* Fast path – IRQ already asserted after draining stale events */
-    if (GetIrqState(nullptr) > 0)
-        return;
-
-    /*
-     * IRQ not yet asserted.  Block until a rising edge arrives, but with a
-     * bounded timeout so the thread can never get permanently stuck.
-     */
-    while (GetIrqState(nullptr) <= 0)
+    // Now wait for a *genuine* new assertion.
+    // poll() then drain then check level — in that order — so we never
+    // act on a level reading that precedes the edge that woke us.
+    while (!GetIrqState(nullptr))
     {
-        int ret = poll(&fds, 1, 2000); /* 2 s timeout – matches select() above */
-        if (ret < 0)
+        int ret = poll(&fds, 1, 2000);
+        if (ret < 0 && errno == EINTR)
+            continue;
+        if (ret <= 0)
         {
-            if (errno == EINTR)
-                continue;
-            NXPLOG_TML_E("%s poll() error: %s", __func__, strerror(errno));
+            NXPLOG_TML_D("%s poll() %d - %s", __func__, ret, strerror(errno));
             break;
         }
-        if (ret == 0)
-        {
-            NXPLOG_TML_E("%s poll() timed out waiting for IRQ", __func__);
-            break; /* let the SpiRead return 0xFF and the caller handle it */
-        }
+        // Drain the event(s) that woke us before re-checking the level.
+        // This ensures GetIrqState() sees the stable post-edge state.
         if (fds.revents & POLLIN)
-        {
-            struct gpiod_edge_event_buffer *evbuf = gpiod_edge_event_buffer_new(16);
-            if (evbuf)
-            {
-                gpiod_line_request_read_edge_events(mpIntRequest, evbuf, 16);
-                gpiod_edge_event_buffer_free(evbuf);
-            }
-        }
+            gpiod_line_request_read_edge_events(mpIntRequest, evbuf, 16);
     }
+
+    if (evbuf)
+        gpiod_edge_event_buffer_free(evbuf);
 }
 
 /* ── NfccReset ───────────────────────────────────────────────────────────── */
