@@ -39,22 +39,26 @@
 #include <termios.h>
 #include <unistd.h>
 
+#include "phNxpNciHal_utils.h"
 #include <NfccAltTransport.h>
 #include <NfccI2cTransport.h>
 #include <phNfcStatus.h>
 #include <phNxpConfig.h>
 #include <phNxpLog.h>
-#include "phNxpNciHal_utils.h"
 
 extern phTmlNfc_i2cfragmentation_t fragmentation_enabled;
 extern phTmlNfc_Context_t *gpphTmlNfc_Context;
 
 /* ── Constructor / Destructor ────────────────────────────────────────────── */
 
-NfccAltTransport::NfccAltTransport()
-    : mpGpioChip(nullptr), mpIntRequest(nullptr), mpOutRequest(nullptr) {}
+NfccAltTransport::NfccAltTransport() : mpGpioChip(nullptr), mpIntRequest(nullptr), mpOutRequest(nullptr)
+{
+}
 
-NfccAltTransport::~NfccAltTransport() { ReleaseGpio(); }
+NfccAltTransport::~NfccAltTransport()
+{
+    ReleaseGpio();
+}
 
 /*******************************************************************************
 **
@@ -67,21 +71,21 @@ NfccAltTransport::~NfccAltTransport() { ReleaseGpio(); }
 *******************************************************************************/
 void NfccAltTransport::ReleaseGpio()
 {
-  if (mpOutRequest)
-  {
-    gpiod_line_request_release(mpOutRequest);
-    mpOutRequest = nullptr;
-  }
-  if (mpIntRequest)
-  {
-    gpiod_line_request_release(mpIntRequest);
-    mpIntRequest = nullptr;
-  }
-  if (mpGpioChip)
-  {
-    gpiod_chip_close(mpGpioChip);
-    mpGpioChip = nullptr;
-  }
+    if (mpOutRequest)
+    {
+        gpiod_line_request_release(mpOutRequest);
+        mpOutRequest = nullptr;
+    }
+    if (mpIntRequest)
+    {
+        gpiod_line_request_release(mpIntRequest);
+        mpIntRequest = nullptr;
+    }
+    if (mpGpioChip)
+    {
+        gpiod_chip_close(mpGpioChip);
+        mpGpioChip = nullptr;
+    }
 }
 
 /*******************************************************************************
@@ -110,190 +114,176 @@ void NfccAltTransport::ReleaseGpio()
 int NfccAltTransport::ConfigurePin()
 {
 
-  /* ── Resolve chip path ──────────────────────────────────────────────────
-   * GetNxpStrValue writes a null-terminated string and returns non-zero on
-   * success.  PATH_MAX (4096) is overkill for a devnode but safe.           */
-  char chipPath[64] = GPIO_CHIP_PATH; /* pre-filled with compiled default */
-  if (GetNxpStrValue(NAME_NXP_GPIO_CHIP_PATH, chipPath, sizeof(chipPath)) <= 0)
-  {
-    NXPLOG_TML_D("%s NXP_GPIO_CHIP_PATH not in config, using default: %s",
-                 __func__, chipPath);
-  }
-
-  /* ── Resolve pin offsets ────────────────────────────────────────────────
-   * GetNxpNumValue writes into a 'long' when len == sizeof(long).
-   * We read into long then range-check before trusting the value.           */
-  unsigned int pinInt = PIN_INT;
-  unsigned int pinEnable = PIN_ENABLE;
-  unsigned int pinFwDnld = PIN_FWDNLD;
-
-  long cfgVal = 0;
-  if (GetNxpNumValue(NAME_NXP_GPIO_INT, &cfgVal, sizeof(cfgVal)) > 0 &&
-      cfgVal > 0 && cfgVal < 512)
-  {
-    pinInt = (unsigned int)cfgVal;
-  }
-  else
-  {
-    NXPLOG_TML_D("%s NXP_GPIO_INT not in config, using default: %u",
-                 __func__, pinInt);
-  }
-
-  cfgVal = 0;
-  if (GetNxpNumValue(NAME_NXP_GPIO_VEN, &cfgVal, sizeof(cfgVal)) > 0 &&
-      cfgVal > 0 && cfgVal < 512)
-  {
-    pinEnable = (unsigned int)cfgVal;
-  }
-  else
-  {
-    NXPLOG_TML_D("%s NXP_GPIO_VEN not in config, using default: %u",
-                 __func__, pinEnable);
-  }
-
-  cfgVal = 0;
-  if (GetNxpNumValue(NAME_NXP_GPIO_FWDNLD, &cfgVal, sizeof(cfgVal)) > 0 &&
-      cfgVal > 0 && cfgVal < 512)
-  {
-    pinFwDnld = (unsigned int)cfgVal;
-  }
-  else
-  {
-    NXPLOG_TML_D("%s NXP_GPIO_FWDNLD not in config, using default: %u",
-                 __func__, pinFwDnld);
-  }
-
-  NXPLOG_TML_D("%s chip=%s  INT=%u  VEN=%u  FWDL=%u",
-               __func__, chipPath, pinInt, pinEnable, pinFwDnld);
-
-  /* ── Open GPIO chip ─────────────────────────────────────────────────── */
-  mpGpioChip = gpiod_chip_open(chipPath);
-  if (!mpGpioChip)
-  {
-    NXPLOG_TML_E("%s gpiod_chip_open(%s) failed: %s",
-                 __func__, chipPath, strerror(errno));
-    return NFCSTATUS_INVALID_DEVICE;
-  }
-
-  /* ── Request 1: interrupt input with rising-edge detection ─────────── */
-  {
-    struct gpiod_line_settings *settings = gpiod_line_settings_new();
-    struct gpiod_line_config *line_cfg = gpiod_line_config_new();
-    struct gpiod_request_config *req_cfg = gpiod_request_config_new();
-
-    if (!settings || !line_cfg || !req_cfg)
+    /* ── Resolve chip path ──────────────────────────────────────────────────
+     * GetNxpStrValue writes a null-terminated string and returns non-zero on
+     * success.  PATH_MAX (4096) is overkill for a devnode but safe.           */
+    char chipPath[64] = GPIO_CHIP_PATH; /* pre-filled with compiled default */
+    if (GetNxpStrValue(NAME_NXP_GPIO_CHIP_PATH, chipPath, sizeof(chipPath)) <= 0)
     {
-      NXPLOG_TML_E("%s allocation failed for INT request", __func__);
-      gpiod_line_settings_free(settings);
-      gpiod_line_config_free(line_cfg);
-      gpiod_request_config_free(req_cfg);
-      ReleaseGpio();
-      return NFCSTATUS_INVALID_DEVICE;
+        NXPLOG_TML_D("%s NXP_GPIO_CHIP_PATH not in config, using default: %s", __func__, chipPath);
     }
 
-    gpiod_line_settings_set_direction(settings, GPIOD_LINE_DIRECTION_INPUT);
-    gpiod_line_settings_set_edge_detection(settings, GPIOD_LINE_EDGE_RISING);
-    gpiod_line_settings_set_bias(settings, GPIOD_LINE_BIAS_PULL_DOWN);
+    /* ── Resolve pin offsets ────────────────────────────────────────────────
+     * GetNxpNumValue writes into a 'long' when len == sizeof(long).
+     * We read into long then range-check before trusting the value.           */
+    unsigned int pinInt = PIN_INT;
+    unsigned int pinEnable = PIN_ENABLE;
+    unsigned int pinFwDnld = PIN_FWDNLD;
 
-    gpiod_line_config_add_line_settings(line_cfg, &pinInt, 1, settings);
-    gpiod_request_config_set_consumer(req_cfg, "nfc-irq");
-
-    mpIntRequest = gpiod_chip_request_lines(mpGpioChip, req_cfg, line_cfg);
-
-    gpiod_line_settings_free(settings);
-    gpiod_line_config_free(line_cfg);
-    gpiod_request_config_free(req_cfg);
-
-    if (!mpIntRequest)
+    long cfgVal = 0;
+    if (GetNxpNumValue(NAME_NXP_GPIO_INT, &cfgVal, sizeof(cfgVal)) > 0 && cfgVal > 0 && cfgVal < 512)
     {
-      NXPLOG_TML_E("%s request for INT pin %u failed: %s",
-                   __func__, pinInt, strerror(errno));
-      ReleaseGpio();
-      return NFCSTATUS_INVALID_DEVICE;
+        pinInt = (unsigned int)cfgVal;
+    }
+    else
+    {
+        NXPLOG_TML_D("%s NXP_GPIO_INT not in config, using default: %u", __func__, pinInt);
     }
 
-    /* Store for use by GetIrqState() / wait4interrupt() */
-    mPinInt = pinInt;
-  }
-
-  /* ── Request 2: VEN + FWDL outputs, both initially LOW ─────────────── */
-  {
-    struct gpiod_line_settings *settings = gpiod_line_settings_new();
-    struct gpiod_line_config *line_cfg = gpiod_line_config_new();
-    struct gpiod_request_config *req_cfg = gpiod_request_config_new();
-
-    if (!settings || !line_cfg || !req_cfg)
+    cfgVal = 0;
+    if (GetNxpNumValue(NAME_NXP_GPIO_VEN, &cfgVal, sizeof(cfgVal)) > 0 && cfgVal > 0 && cfgVal < 512)
     {
-      NXPLOG_TML_E("%s allocation failed for output request", __func__);
-      gpiod_line_settings_free(settings);
-      gpiod_line_config_free(line_cfg);
-      gpiod_request_config_free(req_cfg);
-      ReleaseGpio();
-      return NFCSTATUS_INVALID_DEVICE;
+        pinEnable = (unsigned int)cfgVal;
+    }
+    else
+    {
+        NXPLOG_TML_D("%s NXP_GPIO_VEN not in config, using default: %u", __func__, pinEnable);
     }
 
-    gpiod_line_settings_set_direction(settings, GPIOD_LINE_DIRECTION_OUTPUT);
-    gpiod_line_settings_set_output_value(settings, GPIOD_LINE_VALUE_INACTIVE);
-
-    unsigned int out_offsets[] = {pinEnable, pinFwDnld};
-    gpiod_line_config_add_line_settings(line_cfg, out_offsets, 2, settings);
-    gpiod_request_config_set_consumer(req_cfg, "nfc-ctrl");
-
-    mpOutRequest = gpiod_chip_request_lines(mpGpioChip, req_cfg, line_cfg);
-
-    gpiod_line_settings_free(settings);
-    gpiod_line_config_free(line_cfg);
-    gpiod_request_config_free(req_cfg);
-
-    if (!mpOutRequest)
+    cfgVal = 0;
+    if (GetNxpNumValue(NAME_NXP_GPIO_FWDNLD, &cfgVal, sizeof(cfgVal)) > 0 && cfgVal > 0 && cfgVal < 512)
     {
-      NXPLOG_TML_E("%s request for output pins (%u,%u) failed: %s",
-                   __func__, pinEnable, pinFwDnld, strerror(errno));
-      ReleaseGpio();
-      return NFCSTATUS_INVALID_DEVICE;
+        pinFwDnld = (unsigned int)cfgVal;
+    }
+    else
+    {
+        NXPLOG_TML_D("%s NXP_GPIO_FWDNLD not in config, using default: %u", __func__, pinFwDnld);
     }
 
-    /* Store for use by gpio_set_ven() / gpio_set_fwdl() */
-    mPinEnable = pinEnable;
-    mPinFwDnld = pinFwDnld;
-  }
+    NXPLOG_TML_D("%s chip=%s  INT=%u  VEN=%u  FWDL=%u", __func__, chipPath, pinInt, pinEnable, pinFwDnld);
 
-  NXPLOG_TML_D("%s Success", __func__);
-  return NFCSTATUS_SUCCESS;
+    /* ── Open GPIO chip ─────────────────────────────────────────────────── */
+    mpGpioChip = gpiod_chip_open(chipPath);
+    if (!mpGpioChip)
+    {
+        NXPLOG_TML_E("%s gpiod_chip_open(%s) failed: %s", __func__, chipPath, strerror(errno));
+        return NFCSTATUS_INVALID_DEVICE;
+    }
+
+    /* ── Request 1: interrupt input with rising-edge detection ─────────── */
+    {
+        struct gpiod_line_settings *settings = gpiod_line_settings_new();
+        struct gpiod_line_config *line_cfg = gpiod_line_config_new();
+        struct gpiod_request_config *req_cfg = gpiod_request_config_new();
+
+        if (!settings || !line_cfg || !req_cfg)
+        {
+            NXPLOG_TML_E("%s allocation failed for INT request", __func__);
+            gpiod_line_settings_free(settings);
+            gpiod_line_config_free(line_cfg);
+            gpiod_request_config_free(req_cfg);
+            ReleaseGpio();
+            return NFCSTATUS_INVALID_DEVICE;
+        }
+
+        gpiod_line_settings_set_direction(settings, GPIOD_LINE_DIRECTION_INPUT);
+        gpiod_line_settings_set_edge_detection(settings, GPIOD_LINE_EDGE_BOTH); // was: GPIOD_LINE_EDGE_RISING
+        gpiod_line_settings_set_bias(settings, GPIOD_LINE_BIAS_PULL_DOWN);
+
+        gpiod_line_config_add_line_settings(line_cfg, &pinInt, 1, settings);
+        gpiod_request_config_set_consumer(req_cfg, "nfc-irq");
+
+        mpIntRequest = gpiod_chip_request_lines(mpGpioChip, req_cfg, line_cfg);
+
+        gpiod_line_settings_free(settings);
+        gpiod_line_config_free(line_cfg);
+        gpiod_request_config_free(req_cfg);
+
+        if (!mpIntRequest)
+        {
+            NXPLOG_TML_E("%s request for INT pin %u failed: %s", __func__, pinInt, strerror(errno));
+            ReleaseGpio();
+            return NFCSTATUS_INVALID_DEVICE;
+        }
+
+        /* Store for use by GetIrqState() / wait4interrupt() */
+        mPinInt = pinInt;
+    }
+
+    /* ── Request 2: VEN + FWDL outputs, both initially LOW ─────────────── */
+    {
+        struct gpiod_line_settings *settings = gpiod_line_settings_new();
+        struct gpiod_line_config *line_cfg = gpiod_line_config_new();
+        struct gpiod_request_config *req_cfg = gpiod_request_config_new();
+
+        if (!settings || !line_cfg || !req_cfg)
+        {
+            NXPLOG_TML_E("%s allocation failed for output request", __func__);
+            gpiod_line_settings_free(settings);
+            gpiod_line_config_free(line_cfg);
+            gpiod_request_config_free(req_cfg);
+            ReleaseGpio();
+            return NFCSTATUS_INVALID_DEVICE;
+        }
+
+        gpiod_line_settings_set_direction(settings, GPIOD_LINE_DIRECTION_OUTPUT);
+        gpiod_line_settings_set_output_value(settings, GPIOD_LINE_VALUE_INACTIVE);
+
+        unsigned int out_offsets[] = {pinEnable, pinFwDnld};
+        gpiod_line_config_add_line_settings(line_cfg, out_offsets, 2, settings);
+        gpiod_request_config_set_consumer(req_cfg, "nfc-ctrl");
+
+        mpOutRequest = gpiod_chip_request_lines(mpGpioChip, req_cfg, line_cfg);
+
+        gpiod_line_settings_free(settings);
+        gpiod_line_config_free(line_cfg);
+        gpiod_request_config_free(req_cfg);
+
+        if (!mpOutRequest)
+        {
+            NXPLOG_TML_E("%s request for output pins (%u,%u) failed: %s", __func__, pinEnable, pinFwDnld,
+                         strerror(errno));
+            ReleaseGpio();
+            return NFCSTATUS_INVALID_DEVICE;
+        }
+
+        /* Store for use by gpio_set_ven() / gpio_set_fwdl() */
+        mPinEnable = pinEnable;
+        mPinFwDnld = pinFwDnld;
+    }
+
+    NXPLOG_TML_D("%s Success", __func__);
+    return NFCSTATUS_SUCCESS;
 }
 
 /* ── GPIO output helpers ─────────────────────────────────────────────────── */
 
 void NfccAltTransport::gpio_set_ven(int value)
 {
-  if (!mpOutRequest)
-    return;
+    if (!mpOutRequest)
+        return;
 
-  enum gpiod_line_value v =
-      (value ? GPIOD_LINE_VALUE_ACTIVE : GPIOD_LINE_VALUE_INACTIVE);
+    enum gpiod_line_value v = (value ? GPIOD_LINE_VALUE_ACTIVE : GPIOD_LINE_VALUE_INACTIVE);
 
-  if (gpiod_line_request_set_value(mpOutRequest, mPinEnable, v) < 0)
-  {
-    NXPLOG_TML_E("%s set VEN(pin %u)=%d failed: %s",
-                 __func__, mPinEnable, value, strerror(errno));
-  }
-  usleep(10 * 1000);
+    if (gpiod_line_request_set_value(mpOutRequest, mPinEnable, v) < 0)
+    {
+        NXPLOG_TML_E("%s set VEN(pin %u)=%d failed: %s", __func__, mPinEnable, value, strerror(errno));
+    }
+    usleep(10 * 1000);
 }
 
 void NfccAltTransport::gpio_set_fwdl(int value)
 {
-  if (!mpOutRequest)
-    return;
+    if (!mpOutRequest)
+        return;
 
-  enum gpiod_line_value v =
-      (value ? GPIOD_LINE_VALUE_ACTIVE : GPIOD_LINE_VALUE_INACTIVE);
+    enum gpiod_line_value v = (value ? GPIOD_LINE_VALUE_ACTIVE : GPIOD_LINE_VALUE_INACTIVE);
 
-  if (gpiod_line_request_set_value(mpOutRequest, mPinFwDnld, v) < 0)
-  {
-    NXPLOG_TML_E("%s set FWDL(pin %u)=%d failed: %s",
-                 __func__, mPinFwDnld, value, strerror(errno));
-  }
-  usleep(10 * 1000);
+    if (gpiod_line_request_set_value(mpOutRequest, mPinFwDnld, v) < 0)
+    {
+        NXPLOG_TML_E("%s set FWDL(pin %u)=%d failed: %s", __func__, mPinFwDnld, value, strerror(errno));
+    }
+    usleep(10 * 1000);
 }
 
 /*******************************************************************************
@@ -311,26 +301,24 @@ void NfccAltTransport::gpio_set_fwdl(int value)
 *******************************************************************************/
 int NfccAltTransport::GetIrqState(void *pDevHandle)
 {
-  (void)pDevHandle;
+    (void)pDevHandle;
 
-  if (!mpIntRequest)
-  {
-    NXPLOG_TML_E("%s INT request not initialised", __func__);
-    return -1;
-  }
+    if (!mpIntRequest)
+    {
+        NXPLOG_TML_E("%s INT request not initialised", __func__);
+        return -1;
+    }
 
-  enum gpiod_line_value val =
-      gpiod_line_request_get_value(mpIntRequest, mPinInt);
+    enum gpiod_line_value val = gpiod_line_request_get_value(mpIntRequest, mPinInt);
 
-  if (val == GPIOD_LINE_VALUE_ERROR)
-  {
-    NXPLOG_TML_E("%s gpiod_line_request_get_value failed: %s", __func__,
-                 strerror(errno));
-    return -1;
-  }
+    if (val == GPIOD_LINE_VALUE_ERROR)
+    {
+        NXPLOG_TML_E("%s gpiod_line_request_get_value failed: %s", __func__, strerror(errno));
+        return -1;
+    }
 
-  NXPLOG_TML_D("%s state=%d", __func__, (val == GPIOD_LINE_VALUE_ACTIVE));
-  return (val == GPIOD_LINE_VALUE_ACTIVE) ? 1 : 0;
+    NXPLOG_TML_D("%s state=%d", __func__, (val == GPIOD_LINE_VALUE_ACTIVE));
+    return (val == GPIOD_LINE_VALUE_ACTIVE) ? 1 : 0;
 }
 
 /*******************************************************************************
@@ -349,52 +337,79 @@ int NfccAltTransport::GetIrqState(void *pDevHandle)
 *******************************************************************************/
 void NfccAltTransport::wait4interrupt(void)
 {
-  if (!mpIntRequest)
-  {
-    NXPLOG_TML_E("%s INT request not initialised", __func__);
-    return;
-  }
-
-  /* Fast path – IRQ already high */
-  if (GetIrqState(nullptr) > 0)
-    return;
-
-  int irq_fd = gpiod_line_request_get_fd(mpIntRequest);
-  if (irq_fd < 0)
-  {
-    NXPLOG_TML_E("%s gpiod_line_request_get_fd failed: %s", __func__,
-                 strerror(errno));
-    return;
-  }
-
-  struct pollfd fds = {.fd = irq_fd, .events = POLLIN};
-
-  while (GetIrqState(nullptr) <= 0)
-  {
-    int ret = poll(&fds, 1, -1 /* block indefinitely */);
-    if (ret < 0)
+    if (!mpIntRequest)
     {
-      if (errno == EINTR)
-        continue; /* signal – retry */
-      NXPLOG_TML_E("%s poll() error: %s", __func__, strerror(errno));
-      break;
+        NXPLOG_TML_E("%s INT request not initialised", __func__);
+        return;
     }
 
-    if (ret > 0 && (fds.revents & POLLIN))
+    int irq_fd = gpiod_line_request_get_fd(mpIntRequest);
+    if (irq_fd < 0)
     {
-      /*
-       * Drain the event(s) that woke us up.  We must read them or the fd
-       * stays readable and the next poll() returns immediately.
-       */
-      struct gpiod_edge_event_buffer *evbuf = gpiod_edge_event_buffer_new(8);
-      if (evbuf)
-      {
-        /* Return value is the number of events read; errors are < 0 */
-        gpiod_line_request_read_edge_events(mpIntRequest, evbuf, 8);
-        gpiod_edge_event_buffer_free(evbuf);
-      }
+        NXPLOG_TML_E("%s gpiod_line_request_get_fd failed: %s", __func__, strerror(errno));
+        return;
     }
-  }
+
+    struct pollfd fds = {.fd = irq_fd, .events = POLLIN};
+
+    /*
+     * ALWAYS drain accumulated edge events from the kernel buffer before
+     * doing anything else.  The fast path (GetIrqState > 0 → return) used
+     * to skip this, which allowed the kernel's bounded event FIFO to fill
+     * up.  Once full, new rising-edge events are silently dropped.  If a
+     * drop then coincides with the IRQ being low at the start of a
+     * poll() call, poll() blocks forever because the event it would need
+     * to wake on was never queued.
+     */
+    while (true)
+    {
+        int ret = poll(&fds, 1, 0); /* non-blocking probe */
+        if (ret <= 0 || !(fds.revents & POLLIN))
+            break;
+
+        struct gpiod_edge_event_buffer *evbuf = gpiod_edge_event_buffer_new(16);
+        if (evbuf)
+        {
+            gpiod_line_request_read_edge_events(mpIntRequest, evbuf, 16);
+            gpiod_edge_event_buffer_free(evbuf);
+        }
+        else
+            break; /* allocation failure – stop draining, don't spin */
+    }
+
+    /* Fast path – IRQ already asserted after draining stale events */
+    if (GetIrqState(nullptr) > 0)
+        return;
+
+    /*
+     * IRQ not yet asserted.  Block until a rising edge arrives, but with a
+     * bounded timeout so the thread can never get permanently stuck.
+     */
+    while (GetIrqState(nullptr) <= 0)
+    {
+        int ret = poll(&fds, 1, 2000); /* 2 s timeout – matches select() above */
+        if (ret < 0)
+        {
+            if (errno == EINTR)
+                continue;
+            NXPLOG_TML_E("%s poll() error: %s", __func__, strerror(errno));
+            break;
+        }
+        if (ret == 0)
+        {
+            NXPLOG_TML_E("%s poll() timed out waiting for IRQ", __func__);
+            break; /* let the SpiRead return 0xFF and the caller handle it */
+        }
+        if (fds.revents & POLLIN)
+        {
+            struct gpiod_edge_event_buffer *evbuf = gpiod_edge_event_buffer_new(16);
+            if (evbuf)
+            {
+                gpiod_line_request_read_edge_events(mpIntRequest, evbuf, 16);
+                gpiod_edge_event_buffer_free(evbuf);
+            }
+        }
+    }
 }
 
 /* ── NfccReset ───────────────────────────────────────────────────────────── */
@@ -413,51 +428,51 @@ void NfccAltTransport::wait4interrupt(void)
 *******************************************************************************/
 int NfccAltTransport::NfccReset(void *pDevHandle, NfccResetType eType)
 {
-  NXPLOG_TML_D("%s VEN eType %ld", __func__, (long)eType);
+    NXPLOG_TML_D("%s VEN eType %ld", __func__, (long)eType);
 
-  if (NULL == pDevHandle)
-    return -1;
+    if (NULL == pDevHandle)
+        return -1;
 
-  switch (eType)
-  {
-  case MODE_POWER_OFF:
-    gpio_set_fwdl(0);
-    gpio_set_ven(0);
-    break;
-  case MODE_POWER_ON:
-    gpio_set_fwdl(0);
-    gpio_set_ven(1);
-    break;
-  case MODE_FW_DWNLD_WITH_VEN:
-    gpio_set_fwdl(1);
-    gpio_set_ven(0);
-    gpio_set_ven(1);
-    break;
-  case MODE_FW_DWND_HIGH:
-    gpio_set_fwdl(1);
-    break;
-  case MODE_POWER_RESET:
-    gpio_set_ven(0);
-    gpio_set_ven(1);
-    break;
-  case MODE_FW_GPIO_LOW:
-    gpio_set_fwdl(0);
-    break;
-  default:
-    NXPLOG_TML_E("%s unknown eType %ld", __func__, (long)eType);
-    return -1;
-  }
+    switch (eType)
+    {
+    case MODE_POWER_OFF:
+        gpio_set_fwdl(0);
+        gpio_set_ven(0);
+        break;
+    case MODE_POWER_ON:
+        gpio_set_fwdl(0);
+        gpio_set_ven(1);
+        break;
+    case MODE_FW_DWNLD_WITH_VEN:
+        gpio_set_fwdl(1);
+        gpio_set_ven(0);
+        gpio_set_ven(1);
+        break;
+    case MODE_FW_DWND_HIGH:
+        gpio_set_fwdl(1);
+        break;
+    case MODE_POWER_RESET:
+        gpio_set_ven(0);
+        gpio_set_ven(1);
+        break;
+    case MODE_FW_GPIO_LOW:
+        gpio_set_fwdl(0);
+        break;
+    default:
+        NXPLOG_TML_E("%s unknown eType %ld", __func__, (long)eType);
+        return -1;
+    }
 
-  if ((eType != MODE_FW_DWNLD_WITH_VEN) && (eType != MODE_FW_DWND_HIGH))
-  {
-    EnableFwDnldMode(false);
-  }
-  if ((eType == MODE_FW_DWNLD_WITH_VEN) || (eType == MODE_FW_DWND_HIGH))
-  {
-    EnableFwDnldMode(true);
-  }
+    if ((eType != MODE_FW_DWNLD_WITH_VEN) && (eType != MODE_FW_DWND_HIGH))
+    {
+        EnableFwDnldMode(false);
+    }
+    if ((eType == MODE_FW_DWNLD_WITH_VEN) || (eType == MODE_FW_DWND_HIGH))
+    {
+        EnableFwDnldMode(true);
+    }
 
-  return 0;
+    return 0;
 }
 
 /* ── GetNfcState ─────────────────────────────────────────────────────────── */
@@ -473,20 +488,26 @@ int NfccAltTransport::NfccReset(void *pDevHandle, NfccResetType eType)
 *******************************************************************************/
 int NfccAltTransport::GetNfcState(void *pDevHandle)
 {
-  int ret = NFC_STATE_UNKNOWN;
-  NXPLOG_TML_D("%s", __func__);
-  if (NULL == pDevHandle)
+    int ret = NFC_STATE_UNKNOWN;
+    NXPLOG_TML_D("%s", __func__);
+    if (NULL == pDevHandle)
+        return ret;
+    ret = ioctl((intptr_t)pDevHandle, NFC_GET_NFC_STATE);
+    NXPLOG_TML_D("%s nfc state=%d", __func__, ret);
     return ret;
-  ret = ioctl((intptr_t)pDevHandle, NFC_GET_NFC_STATE);
-  NXPLOG_TML_D("%s nfc state=%d", __func__, ret);
-  return ret;
 }
 
 /* ── FW download mode flag ───────────────────────────────────────────────── */
 
-void NfccAltTransport::EnableFwDnldMode(bool mode) { bFwDnldFlag = mode; }
+void NfccAltTransport::EnableFwDnldMode(bool mode)
+{
+    bFwDnldFlag = mode;
+}
 
-bool_t NfccAltTransport::IsFwDnldModeEnabled(void) { return bFwDnldFlag; }
+bool_t NfccAltTransport::IsFwDnldModeEnabled(void)
+{
+    return bFwDnldFlag;
+}
 
 /* ── Semaphore helpers ───────────────────────────────────────────────────── */
 
@@ -499,12 +520,12 @@ bool_t NfccAltTransport::IsFwDnldModeEnabled(void) { return bFwDnldFlag; }
 *******************************************************************************/
 void NfccAltTransport::SemPost()
 {
-  int sem_val = 0;
-  sem_getvalue(&mTxRxSemaphore, &sem_val);
-  if (sem_val == 0)
-  {
-    sem_post(&mTxRxSemaphore);
-  }
+    int sem_val = 0;
+    sem_getvalue(&mTxRxSemaphore, &sem_val);
+    if (sem_val == 0)
+    {
+        sem_post(&mTxRxSemaphore);
+    }
 }
 
 /*******************************************************************************
@@ -518,31 +539,31 @@ void NfccAltTransport::SemPost()
 *******************************************************************************/
 int NfccAltTransport::SemTimedWait()
 {
-  long sem_timedout_ns = 500L * 1000L * 1000L;
-  int s;
-  struct timespec ts;
+    long sem_timedout_ns = 500L * 1000L * 1000L;
+    int s;
+    struct timespec ts;
 
-  clock_gettime(CLOCK_REALTIME, &ts);
-  ts.tv_nsec += sem_timedout_ns;
-  if (ts.tv_nsec >= 1000000000L)
-  {
-    ts.tv_sec += 1;
-    ts.tv_nsec -= 1000000000L;
-  }
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_nsec += sem_timedout_ns;
+    if (ts.tv_nsec >= 1000000000L)
+    {
+        ts.tv_sec += 1;
+        ts.tv_nsec -= 1000000000L;
+    }
 
-  while ((s = sem_timedwait(&mTxRxSemaphore, &ts)) == -1 && errno == EINTR)
-  {
-    continue; /* restart on signal */
-  }
+    while ((s = sem_timedwait(&mTxRxSemaphore, &ts)) == -1 && errno == EINTR)
+    {
+        continue; /* restart on signal */
+    }
 
-  if (s == 0)
-    return NFCSTATUS_SUCCESS;
+    if (s == 0)
+        return NFCSTATUS_SUCCESS;
 
-  if (errno == ETIMEDOUT)
-  {
-    NXPLOG_TML_E("%s timed out errno=0x%x", __func__, errno);
-  }
-  return NFCSTATUS_FAILED;
+    if (errno == ETIMEDOUT)
+    {
+        NXPLOG_TML_E("%s timed out errno=0x%x", __func__, errno);
+    }
+    return NFCSTATUS_FAILED;
 }
 
 /* ── Flushdata ───────────────────────────────────────────────────────────── */
@@ -560,37 +581,33 @@ int NfccAltTransport::SemTimedWait()
 ** Returns          Always -1 (caller uses SemPost side-effect).
 **
 *******************************************************************************/
-int NfccAltTransport::Flushdata(void *pDevHandle, uint8_t *pBuffer,
-                                int numRead)
+int NfccAltTransport::Flushdata(void *pDevHandle, uint8_t *pBuffer, int numRead)
 {
-  int retRead = 0;
-  uint16_t totalBytesToRead =
-      pBuffer[FW_DNLD_LEN_OFFSET] + FW_DNLD_HEADER_LEN + CRC_LEN;
+    int retRead = 0;
+    uint16_t totalBytesToRead = pBuffer[FW_DNLD_LEN_OFFSET] + FW_DNLD_HEADER_LEN + CRC_LEN;
 
-  /* One byte already consumed by the caller, so read the remainder. */
-  retRead =
-      read((intptr_t)pDevHandle, pBuffer + numRead, totalBytesToRead - 1);
+    /* One byte already consumed by the caller, so read the remainder. */
+    retRead = read((intptr_t)pDevHandle, pBuffer + numRead, totalBytesToRead - 1);
 
-  if (retRead > 0)
-  {
-    numRead += retRead;
-    phNxpNciHal_print_packet("RECV", pBuffer, numRead);
-  }
-  else if (retRead == 0)
-  {
-    NXPLOG_TML_E("%s read() [pyld] EOF", __func__);
-  }
-  else
-  {
-    if (!bFwDnldFlag)
+    if (retRead > 0)
     {
-      NXPLOG_TML_D("%s read() [hdr] received", __func__);
-      phNxpNciHal_print_packet("RECV", pBuffer - numRead,
-                               NORMAL_MODE_HEADER_LEN);
+        numRead += retRead;
+        phNxpNciHal_print_packet("RECV", pBuffer, numRead);
     }
-    NXPLOG_TML_E("%s read() [pyld] errno=0x%x", __func__, errno);
-  }
+    else if (retRead == 0)
+    {
+        NXPLOG_TML_E("%s read() [pyld] EOF", __func__);
+    }
+    else
+    {
+        if (!bFwDnldFlag)
+        {
+            NXPLOG_TML_D("%s read() [hdr] received", __func__);
+            phNxpNciHal_print_packet("RECV", pBuffer - numRead, NORMAL_MODE_HEADER_LEN);
+        }
+        NXPLOG_TML_E("%s read() [pyld] errno=0x%x", __func__, errno);
+    }
 
-  SemPost();
-  return -1;
+    SemPost();
+    return -1;
 }
